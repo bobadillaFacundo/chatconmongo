@@ -1,13 +1,12 @@
-// import express from "express"
+import express from 'express';
+import path from 'path';
 
-const express = require('express')
-
-const router = express.Router()
+const router = express.Router();
 
 router.get("/", (req, res) => {
-    res.render("index",{
-        style:'index.css'
-    })
-})
+    res.render("index", {
+        style: 'index.css'
+    });
+});
 
-module.exports = router
+export default router;

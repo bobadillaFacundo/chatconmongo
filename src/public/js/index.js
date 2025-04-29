@@ -1,48 +1,73 @@
+// /public/js/index.js
 
-const socket = io()
-let user
-const mensaje = document.getElementById('texto')
-const mensajeInput = document.getElementById('input')
-const respuestaDiv = document.getElementById('enviar')
+const socket = io();
 
+// Elementos del DOM
+const chatMessages = document.getElementById('chat-messages');
+const chatForm = document.getElementById('chat-form');
+const msgInput = document.getElementById('msg');
+
+let user = '';
+
+// Mostrar alerta para identificar usuario
 Swal.fire({
-    title: 'Identificarse',
-    input: 'text',
-    text: 'Ingresa el usuario para identificarse en el chat',
-    inputValidator: (value) => {
-        return !value && 'Necesitas escribir un nombre de usuario para conectarse'
-    },
-    toast: true
-
+  title: 'Identificarse',
+  input: 'text',
+  text: 'Ingresa tu nombre de usuario para el chat',
+  inputValidator: (value) => {
+    return !value && 'Necesitas escribir un nombre de usuario';
+  },
+  allowOutsideClick: false,
+  allowEscapeKey: false,
+  toast: false
 }).then(result => {
-    mensaje.value = ''
-    user = result.value
+  user = result.value;
 
-    socket.emit('identificarse', user)
+  socket.emit('identificarse', user);
 
-    socket.on('mensaje_servidor_broadcast', (element) => {
+  // Escucha de mensajes broadcast (conexiones y desconexiones)
+  socket.on('mensaje_servidor_broadcast', (data) => {
+    outputMessage({
+      id: data.id,
+      data: data.data,
+      date: data.date,
+      system: true // Para darle otro estilo
+    });
+  });
 
-        mensaje.value += `${element.id} ${element.data} ${element.date}` + "\n"
-    })
+  // Escucha de mensajes normales
+  socket.on('message', (messages) => {
+    messages.forEach(msg => outputMessage(msg));
+  });
 
-    socket.on('message', data => {
-        let result = ''
-        data.forEach(element => {
-            result += `${element.id} dice: ${element.data} ${element.date}` + "\n"
-        })
-        mensaje.value += result
-    })
+  // Evento enviar mensaje
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const messageText = msgInput.value.trim();
+    if (messageText) {
+      socket.emit('message', messageText, user);
+      msgInput.value = '';
+      msgInput.focus();
+    }
+  });
 
-    respuestaDiv.addEventListener('click', () => {
-        if (mensajeInput.value) {
-            // Enviar mensaje al servidor
-            socket.emit('message', mensajeInput.value, user)
-            mensajeInput.value = '' // Limpiar el input
-        }
-    })
+  // Evento al cerrar la ventana
+  window.addEventListener('beforeunload', () => {
+    socket.emit('disconnection', user);
+  });
+});
 
-    window.addEventListener('beforeunload', () => {
-        socket.emit('disconnection', user)
-    })
-
-})
+// Función para agregar mensaje al chat
+function outputMessage({ id, data, date, system = false }) {
+  const div = document.createElement('div');
+  div.classList.add('message');
+  if (system) {
+    div.classList.add('system-message');
+    div.innerHTML = `<p class="meta">${id} <span>${data} ${date}</span></p>`;
+  } else {
+    div.innerHTML = `<p class="meta">${id} <span>${date}</span></p>
+                     <p class="text">${data}</p>`;
+  }
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}

@@ -1,103 +1,97 @@
-// import { MongoClient } from 'mongodb'
-// import express from 'express'
-// import engine from "express-handlebars"
-// import { Server } from "socket.io"
-// import viewsrouter from "./routers/viewsrouter.js"
-// import __dirname from "./utils.js"
+// server.js
+import express from 'express';
+import { engine } from 'express-handlebars';
+import { Server } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+import { initDB, getMessageCollection } from './db.js';
+import viewsRouter from './routers/viewsrouter.js';
 
-const { MongoClient } = require('mongodb')
-const express = require('express')
-const engine = require("express-handlebars")
-const { Server } = require("socket.io")
-const viewsrouter = require("./routers/viewsrouter.js")
+dotenv.config();
 
+// __dirname para ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const app = express()
-const httpserver = app.listen(8080, () => console.log("servidor escuchando en el puerto 8080"))
-const socketserver = new Server(httpserver)
-app.engine("handlebars", engine.engine())
-app.set("view engine", "handlebars")
-app.set("views", __dirname + "/views")
-app.use(express.static(__dirname + "/public"))
-app.use("/", viewsrouter)
-app.use('/css', express.static('public/css'))
+// Helpers
+function formatDate() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
-socketserver.on('connection', socket => {
-
-  socket.on('identificarse', us => {
-
-    console.log(`Cliente conectado: ${socket.id}`);
-
-    const date = new Date()
-    const mess = {
-      id: us,
-      data: 'Conectado ',
-      date: `${date.getDay()}/${date.getMonth()}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes()}`
-    }
-    obtenerTodosLosDocumentos(socket)
-    socket.broadcast.emit('mensaje_servidor_broadcast', mess)
-  })
-
-  socket.on('message', async (data, user) => {
-    const date = new Date()
-    const mess ={
-      id: user,
-      data,
-      date: `${date.getDay()}/${date.getMonth()}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes()}`
-    }
-    insertarUnElemento(mess)
-    socketserver.emit('message', [mess])
-  })
-
-  socket.on('disconnection', (us) => {
-    console.log(`Cliente desconectado: ${socket.id}`);
-    const date = new Date()
-    socket.broadcast.emit('mensaje_servidor_broadcast', {
-      id: us,
-      data: 'Desconectado ',
-      date: `${date.getDay()}/${date.getMonth()}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes()}`
-    })
-  })
-})
-
-
-
-// Función para conectar a la base de datos y ejecutar operaciones
-async function insertarUnElemento(messages) {
-  let client = new MongoClient(process.env.MONGO_URL)
+// Funciones de base de datos
+async function insertarMensaje(doc) {
   try {
-    // Conectar al servidor MongoDB
-    await client.connect();
-    console.log('Conectado correctamente al servidor de MongoDB inertarUnElemento');
-
-    // Seleccionar una base de datos
-    const db = client.db(process.env.MONGO_DB);
-    const collection = db.collection(process.env.MONGO_COLLECTION);
-    await collection.insertOne(messages);
-  } catch (error) {
-    console.error('Error al conectar o interactuar con la base de datos inertarUnElemento:', error);
-  } finally {
-    await client.close(); // Cerrar la conexión cuando termine
-    console.log('Conexión cerrada correctamente en inertarUnElemento');
+    const col = getMessageCollection();
+    await col.insertOne(doc);
+    console.log('Mensaje insertado en MongoDB');
+  } catch (err) {
+    console.error('Error insertando mensaje:', err);
   }
 }
 
-// Función para obtener todos los documentos de una colección
-async function obtenerTodosLosDocumentos(socketserver) {
-  let client = new MongoClient(process.env.MONGO_URL)
+async function enviarTodosLosMensajes(socket) {
   try {
-    await client.connect(); // Conexión a la base de datos
-    console.log('Conectado correctamente al servidor de MongoDB obtenerTodosLosDocumentos');
-    const db = client.db(process.env.MONGO_DB);
-    const collection = db.collection(process.env.MONGO_COLLECTION)
-    // Consulta para obtener todos los documentos de la colección
-    const documents = await collection.find({}).toArray();
-    socketserver.emit('message', documents)
-  } catch (error) {
-    console.error('Error al conectar o interactuar con la base de datos en obtenerTodoslosDocumentos', error);
-
-  } finally {
-    await client.close(); // Cerrar la conexión cuando termine
-    console.log('Conexión cerrada correctamente en obtenerTodoslosDocumentos');
+    const col = getMessageCollection();
+    const docs = await col.find().toArray();
+    socket.emit('message', docs);
+    console.log('Mensajes enviados al cliente');
+  } catch (err) {
+    console.error('Error al recuperar mensajes:', err);
   }
 }
+
+// Configuración de Express
+const app = express();
+app.engine('handlebars', engine());
+app.set('view engine', 'handlebars');
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/css', express.static(path.join(__dirname, 'public/css')));
+app.use(express.json()); // por si necesitas POST/PUT en el futuro
+
+app.use('/', viewsRouter);
+
+const PORT = process.env.PORT || 8080;
+
+(async () => {
+  // 1. Conectar DB
+  await initDB();
+
+  // 2. Arrancar server HTTP y Socket.IO
+  const httpServer = app.listen(PORT, () =>
+    console.log(`🚀 Servidor escuchando en puerto ${PORT}`)
+  );
+  const io = new Server(httpServer);
+
+  // 3. Manejo de conexiones WebSocket
+  io.on('connection', socket => {
+    console.log(`🔌 Cliente conectado: ${socket.id}`);
+
+    socket.on('identificarse', async userId => {
+      await enviarTodosLosMensajes(socket);
+      socket.broadcast.emit('user_event', {
+        id: userId,
+        data: 'Conectado',
+        date: formatDate()
+      });
+    });
+
+    socket.on('message', async (text, userId) => {
+      const msg = { id: userId, data: text, date: formatDate() };
+      await insertarMensaje(msg);
+      io.emit('message', [msg]);
+    });
+
+    socket.on('disconnect', () => {
+      console.log(`❌ Cliente desconectado: ${socket.id}`);
+      socket.broadcast.emit('user_event', {
+        id: socket.id,
+        data: 'Desconectado',
+        date: formatDate()
+      });
+    });
+  });
+})();
