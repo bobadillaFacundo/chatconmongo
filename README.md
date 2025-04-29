@@ -1,3 +1,4 @@
+![140d4c98-4fd8-491b-9da3-89190925aeeb](https://github.com/user-attachments/assets/8aa03626-2317-4f2e-9ccd-65c64bbd3226)
 Necesitas:
 
 node.js v19
