@@ -25,3 +25,6 @@ Una vez que la imagen se haya construido correctamente, puedes ejecutar un conte
 Despues habrir en el puerto http://localhost:8080 todos los clientes que queramos
 
 Los datos se persisten en la bdd MongoDB
+
+
+Video:  https://drive.google.com/file/d/1p3XEeKco2iDLHV1UiCJEFnk9xOvDyw2r/view?usp=sharing
